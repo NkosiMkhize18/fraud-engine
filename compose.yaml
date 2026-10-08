@@ -43,7 +43,7 @@ services:
   # Admin console: http://localhost:8180 (admin/admin)
   keycloak:
     <<: *hardening
-    image: quay.io/keycloak/keycloak:26.7.4
+    image: quay.io/keycloak/keycloak:26.8.0
     command: ["start-dev", "--import-realm"]
     # Development mode rebuilds Keycloak into its install directory at startup, so its filesystem can't be
     # read-only.
