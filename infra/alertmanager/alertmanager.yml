@@ -1,0 +1,21 @@
+# Alerts are grouped and de-duplicated here. The default receiver has no integration yet, so alerts are visible in
+# the Alertmanager UI (http://localhost:9093) and Grafana > Alerting, but nobody is notified.
+# To notify a team, add e.g. slack_configs or email_configs to the receiver (with the secret from a file/vault).
+route:
+  receiver: default
+  group_by: [alertname, job, application]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: default
+      repeat_interval: 1h
+
+receivers:
+  - name: default
+
+# While an app is down, don't also page for the symptoms it causes.
+inhibit_rules:
+  - source_matchers: [alertname="FraudServiceDown"]
+    target_matchers: [severity="warning"]

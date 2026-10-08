@@ -1,0 +1,98 @@
+spring:
+  application:
+    name: fraud-rule-engine
+  datasource:
+    # Defaults match compose.yaml for local development. The password comes from .env (DB_PASSWORD); dev mode gets it from the compose connection details.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/fraud}
+    username: ${DB_USER:fraud}
+    password: ${DB_PASSWORD:}
+    hikari:
+      data-source-properties:
+        # Keep PostgreSQL's error "Detail" (e.g. "Failing row contains (...)", with account ids and amounts) out of
+        # exception messages and logs.
+        logServerErrorDetail: false
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Tokens must be issued by this issuer (the Keycloak realm in compose.yaml). Signing keys are fetched
+          # lazily, so the app starts even if Keycloak is down.
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/fraud-engine}
+
+server:
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # /actuator/prometheus requires the fraud-api/metrics scope.
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      # Fewer histogram buckets: keeps scrapes and Prometheus storage small.
+      minimum-expected-value:
+        http.server.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 10s
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# Fraud rule configuration. Every value can be overridden via env vars,
+# e.g. FRAUD_FLAG_THRESHOLD=70 or FRAUD_RULES_HIGH_AMOUNT_THRESHOLD=5000.
+fraud:
+  # A transaction is flagged when the sum of triggered rule scores reaches this value.
+  flag-threshold: 50
+  # Requests for one account are evaluated one at a time. A request that waits longer than this for the account
+  # gets 429 (Retry-After) instead of holding a database connection while it queues.
+  account-lock-timeout: 1s
+  rules:
+    high-amount:
+      enabled: true
+      threshold: 10000.00
+      score: 40
+    risky-category:
+      enabled: true
+      categories: [GAMBLING, CRYPTO]
+      min-amount: 1000.00
+      score: 30
+    velocity:
+      enabled: true
+      max-transactions: 5
+      window: PT10M
+      score: 35
+    high-risk-country:
+      enabled: true
+      countries: [KP, IR, SY]
+      score: 30
+    odd-hours:
+      enabled: true
+      start-hour: 0     # inclusive, UTC
+      end-hour: 5       # exclusive, UTC
+      min-amount: 2000.00
+      score: 20
+
+# OpenAPI spec at /v3/api-docs (requires a token). The Swagger UI is on the gateway.
+springdoc:
+  show-actuator: false
+openapi:
+  # Browser-facing Keycloak token URL, used by the Swagger UI's "Authorize" button.
+  token-url: ${OPENAPI_TOKEN_URL:http://localhost:8180/realms/fraud-engine/protocol/openid-connect/token}
+
+# JSON log lines (Elastic Common Schema) on stdout. Key-values from log.atInfo().addKeyValue(...) become fields.
+logging:
+  structured:
+    format:
+      console: ecs

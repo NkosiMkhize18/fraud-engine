@@ -1,0 +1,110 @@
+server:
+  port: ${SERVER_PORT:8090}
+  shutdown: graceful
+
+spring:
+  application:
+    name: fraud-api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Same issuer as the service: the local Keycloak realm (compose.yaml).
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/fraud-engine}
+      # Browser login for the Swagger UI only (see SecurityConfig). Endpoints are explicit rather than discovered:
+      # the browser reaches Keycloak on localhost:8180, while the gateway container reaches it on keycloak:8080.
+      client:
+        registration:
+          keycloak:
+            client-id: fraud-docs
+            client-secret: ${DOCS_CLIENT_SECRET}
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: openid
+        provider:
+          keycloak:
+            authorization-uri: ${KEYCLOAK_BROWSER_URL:http://localhost:8180}/realms/fraud-engine/protocol/openid-connect/auth
+            token-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/fraud-engine/protocol/openid-connect/token
+            jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/fraud-engine/protocol/openid-connect/certs
+            user-name-attribute: preferred_username
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+          default-filters:
+            # Token bucket per OAuth2 client (see RateLimitConfig). Exceeding it returns 429 with
+            # X-RateLimit-* headers.
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@clientKeyResolver}"
+                redis-rate-limiter.replenishRate: ${RATE_LIMIT_PER_SECOND:10}
+                redis-rate-limiter.burstCapacity: ${RATE_LIMIT_BURST:20}
+          # Only the public API is routed; the service's /actuator endpoints are never exposed.
+          routes:
+            - id: submit-transaction
+              uri: ${FRAUD_ENGINE_URI:http://localhost:8080}
+              predicates:
+                - Method=POST
+                - Path=/api/v1/transactions
+            - id: read-assessments
+              uri: ${FRAUD_ENGINE_URI:http://localhost:8080}
+              predicates:
+                - Method=GET
+                - Path=/api/v1/assessments,/api/v1/assessments/{transactionId}
+            # The service's OpenAPI spec, for the Swagger UI. Forwards the logged-in docs user's access token.
+            - id: api-docs
+              uri: ${FRAUD_ENGINE_URI:http://localhost:8080}
+              predicates:
+                - Method=GET
+                - Path=/v3/api-docs/fraud-engine
+              filters:
+                - SetPath=/v3/api-docs
+                - TokenRelay=
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # /actuator/prometheus requires the fraud-api/metrics scope.
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+        spring.cloud.gateway.requests: true
+      # Fewer histogram buckets: keeps scrapes and Prometheus storage small.
+      minimum-expected-value:
+        http.server.requests: 5ms
+        spring.cloud.gateway.requests: 5ms
+      maximum-expected-value:
+        http.server.requests: 10s
+        spring.cloud.gateway.requests: 10s
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# Swagger UI at /swagger-ui.html (Keycloak login required). The gateway has no API of its own to document.
+springdoc:
+  api-docs:
+    # The UI needs this enabled; moved aside so /v3/api-docs/fraud-engine reaches the proxied route.
+    path: /v3/api-docs/gateway
+  swagger-ui:
+    urls:
+      - name: Fraud Rule Engine
+        url: /v3/api-docs/fraud-engine
+
+# JSON log lines (Elastic Common Schema) on stdout. Key-values from log.atInfo().addKeyValue(...) become fields.
+logging:
+  structured:
+    format:
+      console: ecs

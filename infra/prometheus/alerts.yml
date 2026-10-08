@@ -1,0 +1,88 @@
+groups:
+  - name: availability
+    rules:
+      - alert: FraudServiceDown
+        expr: up{job=~"fraud-rule-engine|fraud-api-gateway"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "Prometheus can't scrape {{ $labels.job }} ({{ $labels.instance }}). Check the container and its logs."
+
+      - alert: GatewayHighErrorRate
+        expr: |
+          sum(rate(http_server_requests_seconds_count{application="fraud-api-gateway",uri!~"/actuator.*",status=~"5.."}[5m]))
+            / sum(rate(http_server_requests_seconds_count{application="fraud-api-gateway",uri!~"/actuator.*"}[5m])) > 0.05
+          and sum(rate(http_server_requests_seconds_count{application="fraud-api-gateway",uri!~"/actuator.*"}[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway 5xx rate is {{ $value | humanizePercentage }}"
+          description: "More than 5% of gateway responses are server errors. Usually the fraud service is down, slow (timeouts) or failing."
+
+      - alert: GatewayHighLatency
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_requests_seconds_bucket{application="fraud-api-gateway",uri!~"/actuator.*",status=~"2.."}[5m]))
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway p95 latency is {{ $value | humanizeDuration }}"
+          description: "Successful requests are slow. Check the service latency and database connection pool panels."
+
+  - name: fraud
+    rules:
+      - alert: AccountBusySpike
+        expr: sum(increase(fraud_submissions_total{outcome="account_busy"}[5m])) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanize }} submissions rejected as account busy in 5 minutes"
+          description: "Many concurrent submissions for the same account(s) are timing out on the account lock. Possible burst attack, or the database is slow. The service logs name the (masked) accounts."
+
+      - alert: FlagRateUnusual
+        expr: |
+          sum(rate(fraud_assessments_total{flagged="true"}[15m])) / sum(rate(fraud_assessments_total[15m])) > 0.3
+          and sum(increase(fraud_assessments_total[15m])) > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value | humanizePercentage }} of new assessments are flagged"
+          description: "The flag rate is unusually high. Either a fraud wave, or a rule threshold was misconfigured. Check the rule hits panel."
+
+      - alert: EdgeAuthRejectionsHigh
+        expr: sum(rate(http_server_requests_seconds_count{application="fraud-api-gateway",status=~"401|403"}[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Gateway rejects {{ $value | humanize }} requests/s for missing or wrong credentials"
+          description: "Sustained 401/403 responses: a client with an expired or misconfigured token, or someone probing the API."
+
+  - name: resources
+    rules:
+      - alert: DatabaseConnectionsWaiting
+        expr: max(max_over_time(hikaricp_connections_pending{application="fraud-rule-engine"}[1m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Requests are waiting for database connections"
+          description: "The connection pool has been exhausted repeatedly for 5 minutes. Look for a burst on one account (AccountBusySpike) or slow queries."
+
+      - alert: JvmHeapHigh
+        expr: |
+          sum by (application) (jvm_memory_used_bytes{area="heap"} and on (application, id) (jvm_memory_max_bytes{area="heap"} > 0))
+            / sum by (application) (jvm_memory_max_bytes{area="heap"} > 0) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.application }} heap is {{ $value | humanizePercentage }} full"
+          description: "Old-generation heap has stayed above 90% for 10 minutes. Risk of long GC pauses or OutOfMemoryError."
