@@ -43,7 +43,7 @@ services:
   bootstrap:
     <<: *hardening
     restart: "no" # runs once and exits 0; don't let the shared restart policy re-run it
-    image: alpine:3.20
+    image: alpine:3.24
     read_only: true
     tmpfs: [/tmp]
     environment:
