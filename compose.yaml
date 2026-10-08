@@ -203,7 +203,7 @@ services:
   grafana:
     <<: *hardening
     profiles: [app]
-    image: grafana/grafana:13.2.2
+    image: grafana/grafana:13.2.3
     read_only: true
     tmpfs: [/tmp]
     environment:
