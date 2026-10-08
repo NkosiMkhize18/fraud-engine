@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { name: fraud-engine, pom: pom.xml }
+          - { name: gateway, pom: gateway/pom.xml }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: ./mvnw -B -f ${{ matrix.service.pom }} verify
+
+  image:
+    name: Image ${{ matrix.service.name }}
+    runs-on: ubuntu-latest
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - { name: fraud-engine, context: . }
+          - { name: gateway, context: gateway }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.service.context }}
+          load: true
+          tags: ${{ matrix.service.name }}:ci
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
+      - name: Scan image for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ matrix.service.name }}:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  security:
+    name: Config security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Misconfiguration scan of both Dockerfiles.
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          trivy-config: trivy.yaml
+          exit-code: "1"
+
+  alerts:
+    name: Alert rule tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check and unit-test Prometheus alert rules
+        run: |
+          docker run --rm -v "$PWD/infra/prometheus:/p:ro" --entrypoint promtool prom/prometheus:v3.15.0 check rules /p/alerts.yml
+          docker run --rm -v "$PWD/infra/prometheus:/p:ro" --entrypoint promtool prom/prometheus:v3.15.0 test rules /p/alerts.test.yml
+          docker run --rm -v "$PWD/infra/alertmanager:/a:ro" --entrypoint amtool prom/alertmanager:v0.34.1 check-config /a/alertmanager.yml
+
+  e2e:
+    name: End-to-end (compose + Postman)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Throwaway secrets for this run only, written to the git-ignored .env that compose reads.
+      - name: Generate local secrets
+        run: |
+          {
+            echo "TRANSACTION_SUBMITTER_SECRET=$(openssl rand -hex 16)"
+            echo "ASSESSMENT_READER_SECRET=$(openssl rand -hex 16)"
+            echo "METRICS_SCRAPER_SECRET=$(openssl rand -hex 16)"
+            echo "DOCS_CLIENT_SECRET=$(openssl rand -hex 16)"
+            echo "DOCS_VIEWER_PASSWORD=$(openssl rand -hex 12)"
+          } > .env
+      - name: Start the stack
+        run: docker compose --profile app up --build --detach --wait --wait-timeout 300
+      # The same collection you use in Postman: real Keycloak tokens, through the gateway.
+      - name: Run Postman collection
+        run: |
+          set -a && . ./.env && set +a
+          npx --yes newman@6 run postman/fraud-engine.postman_collection.json \
+            --env-var "submitterClientSecret=$TRANSACTION_SUBMITTER_SECRET" \
+            --env-var "readerClientSecret=$ASSESSMENT_READER_SECRET"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile app logs --no-color
+      - name: Stop the stack
+        if: always()
+        run: docker compose --profile app down --volumes

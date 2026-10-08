@@ -1,0 +1,7 @@
+severity:
+  - CRITICAL
+  - HIGH
+scan:
+  skip-dirs:
+    - target
+    - gateway/target
