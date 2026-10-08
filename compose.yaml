@@ -18,7 +18,7 @@ x-hardening: &hardening
 services:
   postgres:
     <<: *hardening
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     user: "70:70" # postgres user in the alpine image
     read_only: true
     tmpfs: [/var/run/postgresql, /tmp]
