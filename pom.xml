@@ -6,7 +6,7 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<!-- Same Spring Boot line as gateway/ (Spring Cloud 2025.1.x is built for 4.0.x; no GA train exists for 4.1). -->
-		<version>4.0.8</version>
+		<version>4.1.1</version>
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.example</groupId>
