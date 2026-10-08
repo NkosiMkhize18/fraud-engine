@@ -1,0 +1,247 @@
+# The whole system in Docker.
+#
+#   docker compose --profile app up --build -d   -> everything; call the API through the gateway on :8090
+#   ./mvnw spring-boot:run                       -> dev mode: Spring Boot starts postgres, keycloak and redis, and
+#                                                   runs the service on :8080 (run gateway/ separately if needed)
+#
+# Networks give each container only the connections it needs (the gateway can't reach the database, the service
+# can't reach Redis, ...):
+#   client -> gateway -> app -> postgres,   gateway -> redis,   gateway/app -> keycloak (token signing keys)
+# Postgres and Redis ports are published on 127.0.0.1 only, for dev mode.
+
+x-hardening: &hardening
+  restart: unless-stopped
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 256
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:17-alpine
+    user: "70:70" # postgres user in the alpine image
+    read_only: true
+    tmpfs: [/var/run/postgresql, /tmp]
+    environment:
+      POSTGRES_DB: fraud
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud # local development only
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - fraud-pgdata:/var/lib/postgresql/data
+    networks: [data]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud -d fraud"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # OAuth2 authorization server (development mode).
+  # Token URL: http://localhost:8180/realms/fraud-engine/protocol/openid-connect/token
+  # Admin console: http://localhost:8180 (admin/admin)
+  keycloak:
+    <<: *hardening
+    image: quay.io/keycloak/keycloak:26.7.4
+    command: ["start-dev", "--import-realm"]
+    # Development mode rebuilds Keycloak into its install directory at startup, so its filesystem can't be
+    # read-only.
+    environment:
+      # Fixed issuer, so tokens validate however a service reaches Keycloak (localhost:8180 or keycloak:8080).
+      KC_HOSTNAME: http://localhost:8180
+      KC_HEALTH_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8180:8080"
+    volumes:
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
+    networks: [edge, backend]
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Rate-limit counters for the gateway. Ephemeral: losing them only resets the token buckets.
+  redis:
+    <<: *hardening
+    image: redis:8-alpine
+    user: "999:999" # redis user in the alpine image
+    read_only: true
+    tmpfs: [/data]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks: [cache]
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # The fraud rule engine. Not published: only reachable through the gateway.
+  app:
+    <<: *hardening
+    profiles: [app]
+    build: .
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/fraud
+      DB_USER: fraud
+      DB_PASSWORD: fraud
+      JWT_ISSUER_URI: http://localhost:8180/realms/fraud-engine
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/fraud-engine/protocol/openid-connect/certs
+    networks: [backend, data]
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 90s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+
+  # Public entry point: JWT + scope checks, per-client rate limiting, access logs.
+  gateway:
+    <<: *hardening
+    profiles: [app]
+    build: ./gateway
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      FRAUD_ENGINE_URI: http://app:8080
+      REDIS_HOST: redis
+      # Override from your shell to see throttling, e.g. RATE_LIMIT_PER_SECOND=1 RATE_LIMIT_BURST=3
+      RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-10}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-20}
+      JWT_ISSUER_URI: http://localhost:8180/realms/fraud-engine
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/fraud-engine/protocol/openid-connect/certs
+      # Swagger UI login: the browser is sent to localhost:8180, the gateway exchanges the code via keycloak:8080.
+      KEYCLOAK_URL: http://keycloak:8080
+    ports:
+      - "8090:8090"
+    networks: [edge, backend, cache]
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8090/actuator/health/readiness"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 60s
+    depends_on:
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+
+  # Metrics: scrapes both apps with a Keycloak token (client metrics-scraper). UI on 127.0.0.1:9090.
+  prometheus:
+    <<: *hardening
+    profiles: [app]
+    image: prom/prometheus:v3.15.0
+    user: "65534:65534" # nobody
+    read_only: true
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./infra/prometheus:/etc/prometheus:ro
+      - fraud-prometheus:/prometheus
+    networks: [backend, monitoring]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      alertmanager:
+        condition: service_healthy
+
+  # Groups, silences and routes the alerts from Prometheus (infra/prometheus/alerts.yml). UI on 127.0.0.1:9093.
+  alertmanager:
+    <<: *hardening
+    profiles: [app]
+    image: prom/alertmanager:v0.34.1
+    user: "65534:65534" # nobody
+    read_only: true
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "127.0.0.1:9093:9093"
+    volumes:
+      - ./infra/alertmanager:/etc/alertmanager:ro
+      - fraud-alertmanager:/alertmanager
+    networks: [monitoring]
+    mem_limit: 128m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # Dashboards: http://localhost:3000 (admin/admin), "Fraud Rule Engine" is the home dashboard.
+  grafana:
+    <<: *hardening
+    profiles: [app]
+    image: grafana/grafana:13.2.2
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin # local development only
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Use the plugins shipped in the image; don't download or update plugins at startup (the root fs is read-only).
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/fraud-engine.json
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/etc/grafana/dashboards:ro
+      - fraud-grafana:/var/lib/grafana
+    networks: [monitoring]
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+networks:
+  edge: {}
+  backend: {}
+  data: {}
+  cache: {}
+  monitoring: {}
+
+volumes:
+  fraud-pgdata:
+  fraud-prometheus:
+  fraud-grafana:
+  fraud-alertmanager:

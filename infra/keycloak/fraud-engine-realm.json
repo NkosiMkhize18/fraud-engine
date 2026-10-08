@@ -1,0 +1,124 @@
+{
+  "realm": "fraud-engine",
+  "enabled": true,
+  "accessTokenLifespan": 900,
+  "defaultDefaultClientScopes": [],
+  "defaultOptionalClientScopes": [],
+  "clientScopes": [
+    {
+      "name": "fraud-api/submit",
+      "description": "Submit transactions for assessment",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "fraud-api/read",
+      "description": "Read assessments",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "fraud-api/metrics",
+      "description": "Scrape Prometheus metrics",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "transaction-submitter",
+      "description": "Upstream systems: may only submit transactions. LOCAL DEVELOPMENT SECRET.",
+      "secret": "submitter-local-secret",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["fraud-api/submit"],
+      "optionalClientScopes": [],
+      "webOrigins": ["http://localhost:8090"]
+    },
+    {
+      "clientId": "assessment-reader",
+      "description": "Analysts / case tools: may only read assessments. LOCAL DEVELOPMENT SECRET.",
+      "secret": "reader-local-secret",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["fraud-api/read"],
+      "optionalClientScopes": [],
+      "webOrigins": ["http://localhost:8090"]
+    },
+    {
+      "clientId": "metrics-scraper",
+      "description": "Prometheus: may only scrape /actuator/prometheus. LOCAL DEVELOPMENT SECRET.",
+      "secret": "metrics-local-secret",
+      "publicClient": false,
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["fraud-api/metrics"],
+      "optionalClientScopes": []
+    },
+    {
+      "clientId": "fraud-docs",
+      "description": "Gateway browser login for the Swagger UI (authorization code flow). LOCAL DEVELOPMENT SECRET.",
+      "secret": "docs-local-secret",
+      "publicClient": false,
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": ["http://localhost:8090/login/oauth2/code/keycloak"],
+      "defaultClientScopes": [],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "sub",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-sub-mapper",
+          "config": { "id.token.claim": "true", "access.token.claim": "true" }
+        },
+        {
+          "name": "username",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "config": {
+            "user.attribute": "username",
+            "claim.name": "preferred_username",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "docs-viewer",
+      "email": "docs-viewer@example.com",
+      "emailVerified": true,
+      "firstName": "Docs",
+      "lastName": "Viewer",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "docs-viewer-local", "temporary": false }]
+    }
+  ]
+}

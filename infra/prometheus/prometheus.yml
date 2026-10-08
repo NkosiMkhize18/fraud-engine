@@ -1,0 +1,29 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# Both apps require a token with the fraud-api/metrics scope on /actuator/prometheus.
+# Prometheus gets one from Keycloak with client credentials (client metrics-scraper).
+scrape_configs:
+  - job_name: fraud-rule-engine
+    metrics_path: /actuator/prometheus
+    oauth2: &keycloak
+      client_id: metrics-scraper
+      client_secret: metrics-local-secret # local development only
+      token_url: http://keycloak:8080/realms/fraud-engine/protocol/openid-connect/token
+    static_configs:
+      - targets: ["app:8080"]
+
+  - job_name: fraud-api-gateway
+    metrics_path: /actuator/prometheus
+    oauth2: *keycloak
+    static_configs:
+      - targets: ["gateway:8090"]

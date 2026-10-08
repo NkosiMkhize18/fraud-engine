@@ -1,0 +1,238 @@
+{
+  "info": {
+    "name": "Fraud Rule Engine",
+    "description": "Calls the fraud rule engine through the API gateway.\n\n1. Run a request in **1. Get tokens**: it calls the Keycloak token URL (OAuth2 client credentials) and stores the access token in a collection variable.\n2. Run the requests in **2. Fraud API**; they send that token as a Bearer token.\n\nTokens expire after 15 minutes; run the token request again to refresh.\n\nThe client secrets are local-development values from infra/keycloak/fraud-engine-realm.json.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8090" },
+    { "key": "tokenUrl", "value": "http://localhost:8180/realms/fraud-engine/protocol/openid-connect/token" },
+    { "key": "submitterClientId", "value": "transaction-submitter" },
+    { "key": "submitterClientSecret", "value": "submitter-local-secret" },
+    { "key": "readerClientId", "value": "assessment-reader" },
+    { "key": "readerClientSecret", "value": "reader-local-secret" },
+    { "key": "transactionId", "value": "txn-1001" },
+    { "key": "submitterToken", "value": "" },
+    { "key": "readerToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Get tokens",
+      "item": [
+        {
+          "name": "Get submitter token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('token issued', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('submitterToken', body.access_token);",
+                  "console.log('submitter token scope:', body.scope, 'expires in', body.expires_in, 's');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{submitterClientId}}", "type": "string" },
+                { "key": "password", "value": "{{submitterClientSecret}}", "type": "string" }
+              ]
+            },
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "grant_type", "value": "client_credentials", "type": "text" }]
+            },
+            "url": "{{tokenUrl}}",
+            "description": "OAuth2 client-credentials grant for the client that may only submit transactions (scope fraud-api/submit)."
+          }
+        },
+        {
+          "name": "Get reader token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('token issued', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('readerToken', body.access_token);",
+                  "console.log('reader token scope:', body.scope, 'expires in', body.expires_in, 's');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{readerClientId}}", "type": "string" },
+                { "key": "password", "value": "{{readerClientSecret}}", "type": "string" }
+              ]
+            },
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [{ "key": "grant_type", "value": "client_credentials", "type": "text" }]
+            },
+            "url": "{{tokenUrl}}",
+            "description": "OAuth2 client-credentials grant for the client that may only read assessments (scope fraud-api/read)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Fraud API",
+      "item": [
+        {
+          "name": "Submit transaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 when new, 200 when already assessed', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{submitterToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"{{transactionId}}\",\n  \"accountId\": \"acc-42\",\n  \"amount\": 15000.00,\n  \"currency\": \"ZAR\",\n  \"category\": \"GAMBLING\",\n  \"merchant\": \"Casino Royale\",\n  \"country\": \"ZA\",\n  \"timestamp\": \"2026-03-01T02:00:00Z\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/transactions",
+            "description": "Scores the transaction. This one triggers HIGH_AMOUNT (40) + RISKY_CATEGORY (30) + ODD_HOURS (20) = 90, so it is flagged. Sending it again returns the stored result with 200."
+          }
+        },
+        {
+          "name": "Get assessment",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{readerToken}}", "type": "string" }]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/assessments/{{transactionId}}"
+          }
+        },
+        {
+          "name": "Search flagged assessments",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{readerToken}}", "type": "string" }]
+            },
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/assessments?flagged=true&accountId=acc-42&page=0&size=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "assessments"],
+              "query": [
+                { "key": "flagged", "value": "true" },
+                { "key": "accountId", "value": "acc-42" },
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Security checks",
+      "item": [
+        {
+          "name": "No token -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('rejected', () => pm.response.to.have.status(401));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": { "type": "noauth" },
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/assessments"
+          }
+        },
+        {
+          "name": "Reader token cannot submit -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('forbidden', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{readerToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transactionId\": \"txn-forbidden\",\n  \"accountId\": \"acc-42\",\n  \"amount\": 10.00,\n  \"currency\": \"ZAR\",\n  \"category\": \"RETAIL\",\n  \"merchant\": \"Shop\",\n  \"country\": \"ZA\",\n  \"timestamp\": \"2026-03-01T12:00:00Z\"\n}"
+            },
+            "url": "{{baseUrl}}/api/v1/transactions"
+          }
+        },
+        {
+          "name": "Submitter token cannot read -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('forbidden', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{submitterToken}}", "type": "string" }]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/api/v1/assessments"
+          }
+        },
+        {
+          "name": "Service actuator is not exposed -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('not routed', () => pm.response.to.have.status(403));"] }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{readerToken}}", "type": "string" }]
+            },
+            "header": [],
+            "url": "{{baseUrl}}/actuator/env"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: fraud-engine
+    folder: Fraud Engine
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/dashboards
