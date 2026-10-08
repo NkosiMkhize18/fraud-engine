@@ -7,6 +7,9 @@ behind an API gateway with OAuth2 authentication and per-client rate limiting.
 Java 21 · Spring Boot 4 · Spring Cloud Gateway · Spring Security (OAuth2 resource server) · Keycloak ·
 PostgreSQL · Redis · Flyway · Docker Compose · Prometheus · Grafana.
 
+Note that in a real world production I would have the gateway, monitoring and supporting services in their own repos
+this is just to consolidate the review.
+
 ## Architecture
 
 ```
