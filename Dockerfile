@@ -2,7 +2,7 @@
 
 # ---- Build stage: compile and package ----
 # Tests are skipped here; CI runs `./mvnw verify` before building the image.
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM maven:3.9-eclipse-temurin-26 AS build
 WORKDIR /workspace
 COPY pom.xml .
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:go-offline
