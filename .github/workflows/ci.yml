@@ -98,6 +98,7 @@ jobs:
             echo "METRICS_SCRAPER_SECRET=$(openssl rand -hex 16)"
             echo "DOCS_CLIENT_SECRET=$(openssl rand -hex 16)"
             echo "DOCS_VIEWER_PASSWORD=$(openssl rand -hex 12)"
+            echo "DB_PASSWORD=$(openssl rand -hex 16)"
           } > .env
       - name: Start the stack
         run: docker compose --profile app up --build --detach --wait --wait-timeout 300

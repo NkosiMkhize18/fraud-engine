@@ -17,6 +17,10 @@
 	<properties>
 		<java.version>21</java.version>
 		<spring-cloud.version>2025.1.3</spring-cloud.version>
+		<!-- CVE-2026-89407, CVE-2026-89425, CVE-2026-68497, CVE-2026-91776, CVE-2026-91777 (high) are fixed in
+		     Jackson 2.21.7 and 3.2.3. Remove once the Spring Boot parent manages a fixed version. -->
+		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+		<jackson-bom.version>3.2.3</jackson-bom.version>
 		<springdoc.version>3.0.3</springdoc.version>
 	</properties>
 
@@ -28,6 +32,12 @@
 				<version>${spring-cloud.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
+			</dependency>
+			<!-- Jackson 3.2.3 needs jackson-annotations 2.22; Spring Boot's management resolves an older 2.21. -->
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-annotations</artifactId>
+				<version>2.22</version>
 			</dependency>
 		</dependencies>
 	</dependencyManagement>

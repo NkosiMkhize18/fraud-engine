@@ -41,7 +41,7 @@ No secrets are committed to this repo. Before the first run, create a git-ignore
 
 ```bash
 cp .env.example .env
-for k in TRANSACTION_SUBMITTER_SECRET ASSESSMENT_READER_SECRET METRICS_SCRAPER_SECRET DOCS_CLIENT_SECRET DOCS_VIEWER_PASSWORD; do
+for k in TRANSACTION_SUBMITTER_SECRET ASSESSMENT_READER_SECRET METRICS_SCRAPER_SECRET DOCS_CLIENT_SECRET DOCS_VIEWER_PASSWORD DB_PASSWORD; do
   sed -i "s|^$k=.*|$k=$(openssl rand -hex 16)|" .env
 done
 ```

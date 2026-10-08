@@ -2,10 +2,10 @@ spring:
   application:
     name: fraud-rule-engine
   datasource:
-    # Defaults match compose.yaml for local development; set DB_URL/DB_USER/DB_PASSWORD everywhere else.
+    # Defaults match compose.yaml for local development. The password comes from .env (DB_PASSWORD); dev mode gets it from the compose connection details.
     url: ${DB_URL:jdbc:postgresql://localhost:5432/fraud}
     username: ${DB_USER:fraud}
-    password: ${DB_PASSWORD:fraud}
+    password: ${DB_PASSWORD:}
     hikari:
       data-source-properties:
         # Keep PostgreSQL's error "Detail" (e.g. "Failing row contains (...)", with account ids and amounts) out of

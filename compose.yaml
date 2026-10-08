@@ -25,7 +25,7 @@ services:
     environment:
       POSTGRES_DB: fraud
       POSTGRES_USER: fraud
-      POSTGRES_PASSWORD: fraud # local development only
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set it in .env (see .env.example)}
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -128,7 +128,7 @@ services:
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/fraud
       DB_USER: fraud
-      DB_PASSWORD: fraud
+      DB_PASSWORD: ${DB_PASSWORD:?set it in .env (see .env.example)}
       JWT_ISSUER_URI: http://localhost:8180/realms/fraud-engine
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/fraud-engine/protocol/openid-connect/certs
     networks: [backend, data]
