@@ -10,7 +10,7 @@ COPY src src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests && cp target/*.jar app.jar
 
 # ---- Runtime stage: JRE only, non-root ----
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 # Fixed numeric UID/GID: runs as an unprivileged user with a stable id.
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --home-dir /app --shell /usr/sbin/nologin app \
