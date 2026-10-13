@@ -83,6 +83,14 @@ curl http://localhost:8090/actuator/health/readiness  # {"status":"UP"}
 If `--wait` fails, look at the logs: `docker compose --profile app logs app gateway keycloak`. A "port is already
 allocated" error means another program is using one of the ports above.
 
+Keycloak reads the realm and its client secrets from `.env` when its container is created, then keeps them. If you
+change a value in `.env` later, restart the stack so the new secrets take effect. Otherwise token requests fail with `unauthorized_client`:
+
+```bash
+docker compose --profile app down                     # keeps the data
+docker compose --profile app up -d --wait
+```
+
 ### Stop it
 
 ```bash
