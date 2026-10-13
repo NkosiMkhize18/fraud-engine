@@ -93,10 +93,12 @@ docker compose --profile app down --volumes           # stop and delete the data
 ### Call it from Postman
 
 1. Import `postman/fraud-engine.postman_collection.json`.
-2. Run **1. Get tokens → Get submitter token** and **Get reader token**. Each calls the Keycloak token URL
+2. In the collection's **Variables** tab, set `submitterClientSecret` to the value of `TRANSACTION_SUBMITTER_SECRET`
+   and `readerClientSecret` to the value of `ASSESSMENT_READER_SECRET` from your `.env`. They are empty in the file on purpose.
+3. Run **1. Get tokens → Get submitter token** and **Get reader token**. Each calls the Keycloak token URL
    (`http://localhost:8180/realms/fraud-engine/protocol/openid-connect/token`) and stores the access token.
-3. Run the requests in **2. Fraud API**, which send the token as `Authorization: Bearer ...`.
-4. **3. Security checks** shows the gateway rejecting a missing token (401) and the wrong scope (403).
+4. Run the requests in **2. Fraud API**, which send the token as `Authorization: Bearer ...`.
+5. **3. Security checks** shows the gateway rejecting a missing token (401) and the wrong scope (403).
 
 Tokens last 15 minutes. The whole collection also runs from the command line:
 `set -a && . ./.env && set +a && npx newman run postman/fraud-engine.postman_collection.json --env-var "submitterClientSecret=$TRANSACTION_SUBMITTER_SECRET" --env-var "readerClientSecret=$ASSESSMENT_READER_SECRET"`.

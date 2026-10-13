@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Fraud Rule Engine",
-    "description": "Calls the fraud rule engine through the API gateway.\n\n1. Run a request in **1. Get tokens**: it calls the Keycloak token URL (OAuth2 client credentials) and stores the access token in a collection variable.\n2. Run the requests in **2. Fraud API**; they send that token as a Bearer token.\n\nTokens expire after 15 minutes; run the token request again to refresh.\n\nThe client secrets are local-development values from infra/keycloak/fraud-engine-realm.json.",
+    "description": "Calls the fraud rule engine through the API gateway.\n\n1. Run a request in **1. Get tokens**: it calls the Keycloak token URL (OAuth2 client credentials) and stores the access token in a collection variable.\n2. Run the requests in **2. Fraud API**; they send that token as a Bearer token.\n\nTokens expire after 15 minutes; run the token request again to refresh.\n\nBefore the first run, set the collection variables submitterClientSecret and readerClientSecret to the values of TRANSACTION_SUBMITTER_SECRET and ASSESSMENT_READER_SECRET from your local .env (see README). They are left empty here so no secret is committed.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
