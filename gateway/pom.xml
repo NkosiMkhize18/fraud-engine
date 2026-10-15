@@ -6,7 +6,7 @@
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
 		<!-- Spring Cloud 2025.1.x supports Boot 4.0.x only; move to 4.1+ with the next Spring Cloud release train. -->
-		<version>4.0.8</version>
+		<version>4.1.1</version>
 		<relativePath/>
 	</parent>
 	<groupId>com.example</groupId>
