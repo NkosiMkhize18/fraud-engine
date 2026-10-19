@@ -7,11 +7,6 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 
-/**
- * Records the authenticated client id as an exchange attribute so {@link AccessLogFilter}, which runs before
- * security, can log it. Registered inside the security chain between authentication and authorization (see
- * SecurityConfig), so requests rejected with 403 are attributed too.
- */
 public class ClientIdCaptureFilter implements WebFilter {
 
 	public static final String CLIENT_ID_ATTRIBUTE = ClientIdCaptureFilter.class.getName() + ".clientId";

@@ -10,8 +10,6 @@ alerting:
     - static_configs:
         - targets: ["alertmanager:9093"]
 
-# Both apps require a token with the fraud-api/metrics scope on /actuator/prometheus.
-# Prometheus gets one from Keycloak with client credentials (client metrics-scraper).
 scrape_configs:
   - job_name: fraud-rule-engine
     metrics_path: /actuator/prometheus

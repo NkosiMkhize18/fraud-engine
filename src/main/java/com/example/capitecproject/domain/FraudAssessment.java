@@ -14,14 +14,17 @@ import jakarta.persistence.PostPersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Transient;
 import java.math.BigDecimal;
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.BatchSize;
 import org.springframework.data.domain.Persistable;
 
 @Entity
@@ -56,7 +59,7 @@ public class FraudAssessment implements Persistable<String> {
 	private String country;
 
 	@Column(name = "transaction_time", nullable = false)
-	private Instant transactionTime;
+	private OffsetDateTime transactionTime;
 
 	@Column(name = "risk_score", nullable = false)
 	private int riskScore;
@@ -65,10 +68,23 @@ public class FraudAssessment implements Persistable<String> {
 	private boolean flagged;
 
 	@Column(name = "evaluated_at", nullable = false)
-	private Instant evaluatedAt;
+	private OffsetDateTime evaluatedAt;
+
+	/** The amount converted to the base currency (fraud.base-currency) that the rules were scored against. */
+	@Column(name = "base_amount", nullable = false, precision = 19, scale = 4)
+	private BigDecimal baseAmount;
+
+	/** The rate used for that conversion, kept so the assessment can be audited after rates change. */
+	@Column(name = "rate_to_base", nullable = false, precision = 19, scale = 8)
+	private BigDecimal rateToBase;
+
+	/** The version of the rule file that scored this assessment (see RuleSet). Null for assessments made before V5. */
+	@Column(name = "rule_set_version", length = 64)
+	private String ruleSetVersion;
 
 	@ElementCollection(fetch = FetchType.EAGER)
 	@CollectionTable(name = "fraud_assessment_rule_hit", joinColumns = @JoinColumn(name = "transaction_id"))
+	@BatchSize(size = 100)
 	@Builder.Default
 	private List<RuleHit> ruleHits = new ArrayList<>();
 
@@ -79,6 +95,16 @@ public class FraudAssessment implements Persistable<String> {
 	@Override
 	public String getId() {
 		return transactionId;
+	}
+
+	public boolean matches(TransactionEvent event) {
+		return accountId.equals(event.accountId())
+				&& amount.compareTo(event.amount()) == 0
+				&& currency.equals(event.currency())
+				&& category == event.category()
+				&& Objects.equals(merchant, event.merchant())
+				&& country.equals(event.country())
+				&& transactionTime.isEqual(event.timestamp().truncatedTo(ChronoUnit.MICROS));
 	}
 
 	@PostLoad

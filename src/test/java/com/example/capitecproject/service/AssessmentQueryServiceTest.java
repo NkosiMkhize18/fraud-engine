@@ -8,8 +8,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.example.capitecproject.domain.FraudAssessment;
+import com.example.capitecproject.exception.AssessmentNotFoundException;
 import com.example.capitecproject.repository.FraudAssessmentRepository;
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -47,8 +48,8 @@ class AssessmentQueryServiceTest {
 		Page<FraudAssessment> page = new PageImpl<>(List.of());
 		when(repository.findAll(any(Specification.class), any(Pageable.class))).thenReturn(page);
 
-		var result = service.search(true, "acc-1", Instant.parse("2026-03-01T00:00:00Z"),
-				Instant.parse("2026-03-02T00:00:00Z"), 2, 25);
+		var result = service.search(true, "acc-1", OffsetDateTime.parse("2026-03-01T00:00:00Z"),
+				OffsetDateTime.parse("2026-03-02T00:00:00Z"), 2, 25);
 
 		assertThat(result).isSameAs(page);
 		var pageable = ArgumentCaptor.forClass(Pageable.class);

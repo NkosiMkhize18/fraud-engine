@@ -1,36 +1,44 @@
 package com.example.capitecproject.rules;
 
-import com.example.capitecproject.config.FraudProperties;
 import com.example.capitecproject.domain.RuleHit;
-import com.example.capitecproject.domain.TransactionEvent;
-import java.time.ZoneOffset;
+import java.math.BigDecimal;
+import java.time.ZoneId;
 import java.util.Optional;
-import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
-@Component
-@ConditionalOnProperty(name = "fraud.rules.odd-hours.enabled", havingValue = "true")
-@RequiredArgsConstructor
+/**
+ * Fires when the converted amount is at or above a minimum and the local hour in {@code zone} falls in the window.
+ * The window may wrap past midnight (start 22, end 4).
+ */
 public class OddHoursRule implements FraudRule {
 
-	public static final String CODE = "ODD_HOURS";
+	private final String code;
+	private final int startHour;
+	private final int endHour;
+	private final BigDecimal minAmount;
+	private final int score;
+	private final ZoneId zone;
 
-	private final FraudProperties properties;
+	public OddHoursRule(String code, int startHour, int endHour, BigDecimal minAmount, int score, ZoneId zone) {
+		this.code = code;
+		this.startHour = startHour;
+		this.endHour = endHour;
+		this.minAmount = minAmount;
+		this.score = score;
+		this.zone = zone;
+	}
 
 	@Override
-	public Optional<RuleHit> evaluate(TransactionEvent event) {
-		var config = properties.rules().oddHours();
-		int hour = event.timestamp().atOffset(ZoneOffset.UTC).getHour();
-		boolean inWindow = config.startHour() <= config.endHour()
-				? hour >= config.startHour() && hour < config.endHour()
-				: hour >= config.startHour() || hour < config.endHour();
-		if (!inWindow || event.amount().compareTo(config.minAmount()) < 0) {
+	public Optional<RuleHit> evaluate(EvaluationContext context) {
+		int hour = context.event().timestamp().atZoneSameInstant(zone).getHour();
+		boolean inWindow = startHour <= endHour
+				? hour >= startHour && hour < endHour
+				: hour >= startHour || hour < endHour;
+		if (!inWindow || context.baseAmount().compareTo(minAmount) < 0) {
 			return Optional.empty();
 		}
-		return Optional.of(new RuleHit(CODE,
-				"Transaction of %s at %02d:00 UTC falls in the %02d:00-%02d:00 quiet window".formatted(
-						event.amount().toPlainString(), hour, config.startHour(), config.endHour()),
-				config.score()));
+		return Optional.of(new RuleHit(code,
+				"Transaction of %s at %02d:00 (%s) falls in the %02d:00-%02d:00 quiet window".formatted(
+						context.amountDescription(), hour, zone.getId(), startHour, endHour),
+				score));
 	}
 }

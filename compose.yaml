@@ -1,13 +1,3 @@
-# The whole system in Docker.
-#
-#   docker compose --profile app up --build -d   -> everything; call the API through the gateway on :8090
-#   ./mvnw spring-boot:run                       -> dev mode: Spring Boot starts postgres, keycloak and redis, and
-#                                                   runs the service on :8080 (run gateway/ separately if needed)
-#
-# Networks give each container only the connections it needs (the gateway can't reach the database, the service
-# can't reach Redis, ...):
-#   client -> gateway -> app -> postgres,   gateway -> redis,   gateway/app -> keycloak (token signing keys)
-# Postgres and Redis ports are published on 127.0.0.1 only, for dev mode.
 
 x-hardening: &hardening
   restart: unless-stopped
@@ -19,7 +9,7 @@ services:
   postgres:
     <<: *hardening
     image: postgres:17-alpine
-    user: "70:70" # postgres user in the alpine image
+    user: "70:70"
     read_only: true
     tmpfs: [/var/run/postgresql, /tmp]
     environment:
@@ -38,11 +28,9 @@ services:
       timeout: 3s
       retries: 10
 
-  # Renders the committed realm and Prometheus secret templates with the values from .env, then exits. Keycloak and
-  # Prometheus only start once this has succeeded, so no secret is ever committed to the repo.
   bootstrap:
     <<: *hardening
-    restart: "no" # runs once and exits 0; don't let the shared restart policy re-run it
+    restart: "no"
     image: alpine:3.20
     read_only: true
     tmpfs: [/tmp]
@@ -70,23 +58,17 @@ services:
       - prometheus-secrets:/secrets
     networks: [backend]
 
-  # OAuth2 authorization server (development mode).
-  # Token URL: http://localhost:8180/realms/fraud-engine/protocol/openid-connect/token
-  # Admin console: http://localhost:8180 (admin/admin)
   keycloak:
     <<: *hardening
     image: quay.io/keycloak/keycloak:26.7.4
     command: ["start-dev", "--import-realm"]
-    # Development mode rebuilds Keycloak into its install directory at startup, so its filesystem can't be
-    # read-only.
     environment:
-      # Fixed issuer, so tokens validate however a service reaches Keycloak (localhost:8180 or keycloak:8080).
       KC_HOSTNAME: http://localhost:8180
       KC_HEALTH_ENABLED: "true"
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?set it in .env (see .env.example)}
     ports:
-      - "8180:8080"
+      - "127.0.0.1:8180:8080"
     volumes:
       - keycloak-import:/opt/keycloak/data/import:ro
     networks: [edge, backend]
@@ -100,11 +82,10 @@ services:
       timeout: 3s
       retries: 30
 
-  # Rate-limit counters for the gateway. Ephemeral: losing them only resets the token buckets.
   redis:
     <<: *hardening
     image: redis:8-alpine
-    user: "999:999" # redis user in the alpine image
+    user: "999:999"
     read_only: true
     tmpfs: [/data]
     command: ["redis-server", "--save", "", "--appendonly", "no"]
@@ -118,7 +99,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # The fraud rule engine. Not published: only reachable through the gateway.
   app:
     <<: *hardening
     profiles: [app]
@@ -146,7 +126,6 @@ services:
       keycloak:
         condition: service_healthy
 
-  # Public entry point: JWT + scope checks, per-client rate limiting, access logs.
   gateway:
     <<: *hardening
     profiles: [app]
@@ -156,12 +135,10 @@ services:
     environment:
       FRAUD_ENGINE_URI: http://app:8080
       REDIS_HOST: redis
-      # Override from your shell to see throttling, e.g. RATE_LIMIT_PER_SECOND=1 RATE_LIMIT_BURST=3
       RATE_LIMIT_PER_SECOND: ${RATE_LIMIT_PER_SECOND:-10}
       RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-20}
       JWT_ISSUER_URI: http://localhost:8180/realms/fraud-engine
       SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWKSETURI: http://keycloak:8080/realms/fraud-engine/protocol/openid-connect/certs
-      # Swagger UI login: the browser is sent to localhost:8180, the gateway exchanges the code via keycloak:8080.
       KEYCLOAK_URL: http://keycloak:8080
       DOCS_CLIENT_SECRET: ${DOCS_CLIENT_SECRET:?set it in .env (see .env.example)}
     ports:
@@ -183,12 +160,11 @@ services:
       app:
         condition: service_healthy
 
-  # Metrics: scrapes both apps with a Keycloak token (client metrics-scraper). UI on 127.0.0.1:9090.
   prometheus:
     <<: *hardening
     profiles: [app]
     image: prom/prometheus:v3.15.0
-    user: "65534:65534" # nobody
+    user: "65534:65534"
     read_only: true
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -215,12 +191,11 @@ services:
       alertmanager:
         condition: service_healthy
 
-  # Groups, silences and routes the alerts from Prometheus (infra/prometheus/alerts.yml). UI on 127.0.0.1:9093.
   alertmanager:
     <<: *hardening
     profiles: [app]
     image: prom/alertmanager:v0.34.1
-    user: "65534:65534" # nobody
+    user: "65534:65534"
     read_only: true
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
@@ -238,7 +213,6 @@ services:
       timeout: 3s
       retries: 10
 
-  # Dashboards: http://localhost:3000 (admin/admin), "Fraud Rule Engine" is the home dashboard.
   grafana:
     <<: *hardening
     profiles: [app]
@@ -247,12 +221,11 @@ services:
     tmpfs: [/tmp]
     environment:
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin # local development only
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set it in .env (see .env.example)}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
-      # Use the plugins shipped in the image; don't download or update plugins at startup (the root fs is read-only).
       GF_PLUGINS_PREINSTALL_DISABLED: "true"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/fraud-engine.json
     ports:

@@ -1,7 +1,8 @@
 package com.example.capitecproject.domain;
 
 import java.math.BigDecimal;
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 public record TransactionEvent(
 		String transactionId,
@@ -11,5 +12,11 @@ public record TransactionEvent(
 		TransactionCategory category,
 		String merchant,
 		String country,
-		Instant timestamp) {
+		OffsetDateTime timestamp) {
+
+	public TransactionEvent {
+		if (timestamp != null) {
+			timestamp = timestamp.withOffsetSameInstant(ZoneOffset.UTC);
+		}
+	}
 }

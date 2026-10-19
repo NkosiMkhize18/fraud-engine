@@ -1,0 +1,4 @@
+# Changes to the fraud rules need approval from the fraud team, whoever else reviews the pull request.
+# Enable "Require review from Code Owners" in the branch protection rule for main for this to be enforced.
+# REPLACE the placeholder team below with your real GitHub team before relying on this.
+src/main/resources/fraud-rules.yml @REPLACE-WITH-FRAUD-TEAM

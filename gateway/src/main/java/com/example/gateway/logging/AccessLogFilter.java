@@ -12,11 +12,6 @@ import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.SignalType;
 
-/**
- * One access-log line per request, including ones rejected by security or the rate limiter. Also assigns an
- * X-Request-Id (or keeps the caller's), forwards it to the service and returns it, so a request can be traced
- * across both logs.
- */
 @Slf4j
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -35,8 +30,6 @@ public class AccessLogFilter implements WebFilter {
 				.build();
 		traced.getResponse().getHeaders().set(REQUEST_ID_HEADER, requestId);
 
-		// Log when the response is committed, not when the filter chain finishes: errors (upstream down, timeouts)
-		// propagate out of the chain first and only get their 5xx status from the error handler afterwards.
 		var logged = new AtomicBoolean();
 		Runnable logOnce = () -> {
 			if (logged.compareAndSet(false, true)) {
@@ -53,7 +46,6 @@ public class AccessLogFilter implements WebFilter {
 			}
 		};
 		traced.getResponse().beforeCommit(() -> Mono.fromRunnable(logOnce));
-		// A client that disconnects before any response is sent never commits; log it with status "-".
 		return chain.filter(traced).doFinally(signal -> {
 			if (signal == SignalType.CANCEL) {
 				logOnce.run();
@@ -61,7 +53,6 @@ public class AccessLogFilter implements WebFilter {
 		});
 	}
 
-	/** Accept a caller-supplied id only if it's short and safe to log. */
 	private static boolean isValid(String requestId) {
 		return requestId != null && requestId.matches("[A-Za-z0-9._-]{1,64}");
 	}
