@@ -7,7 +7,7 @@ RUN --mount=type=cache,target=/root/.m2 mvn -B -q dependency:go-offline
 COPY src src
 RUN --mount=type=cache,target=/root/.m2 mvn -B -q package -DskipTests && cp target/*.jar app.jar
 
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:24-jre
 RUN groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --no-create-home --home-dir /app --shell /usr/sbin/nologin app \
     && mkdir -p /app && chown -R app:app /app
