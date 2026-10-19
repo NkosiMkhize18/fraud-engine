@@ -7,7 +7,8 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
-import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterAll;
@@ -32,7 +33,7 @@ class TransactionRequestValidationTest {
 
 	private static TransactionRequest request(String amount, String currency, String country) {
 		return new TransactionRequest("t1", "acc-1", amount == null ? null : new BigDecimal(amount), currency,
-				TransactionCategory.RETAIL, "Acme", country, Instant.parse("2026-03-01T12:00:00Z"));
+				TransactionCategory.RETAIL, "Acme", country, OffsetDateTime.parse("2026-03-01T12:00:00Z"));
 	}
 
 	private static Set<String> invalidFields(TransactionRequest request) {
@@ -54,9 +55,30 @@ class TransactionRequestValidationTest {
 	}
 
 	@Test
-	void currencyAndCountryMustBeIsoCodes() {
+	void currencyMustBeAThreeLetterUpperCaseCode() {
+		assertThat(invalidFields(request("5", "ZAR", "ZA"))).isEmpty();
+		assertThat(invalidFields(request("5", "USD", "US"))).isEmpty();
 		assertThat(invalidFields(request("5", "zar", "ZA"))).containsExactly("currency");
 		assertThat(invalidFields(request("5", "ZA", "ZA"))).containsExactly("currency");
+		assertThat(invalidFields(request("5", "ZARR", "ZA"))).containsExactly("currency");
+	}
+
+	@Test
+	void transactionIdMayOnlyContainUrlSafeCharacters() {
+		assertThat(invalidFields(withId("txn-2026.03_01"))).isEmpty();
+		assertThat(invalidFields(withId("txn 1"))).containsExactly("transactionId");
+		assertThat(invalidFields(withId("a/b"))).containsExactly("transactionId");
+		assertThat(invalidFields(withId("50%"))).containsExactly("transactionId");
+		assertThat(invalidFields(withId("a#b"))).containsExactly("transactionId");
+	}
+
+	private static TransactionRequest withId(String id) {
+		return new TransactionRequest(id, "acc-1", BigDecimal.ONE, "ZAR", TransactionCategory.RETAIL, null, "ZA",
+				OffsetDateTime.parse("2026-03-01T12:00:00Z"));
+	}
+
+	@Test
+	void countryMustBeAnIsoAlpha2Code() {
 		assertThat(invalidFields(request("5", "ZAR", "ZAF"))).containsExactly("country");
 	}
 
@@ -72,7 +94,7 @@ class TransactionRequestValidationTest {
 	void idsAreLimitedTo64Characters() {
 		var longId = "x".repeat(65);
 		var request = new TransactionRequest(longId, longId, BigDecimal.ONE, "ZAR", TransactionCategory.RETAIL, null,
-				"ZA", Instant.now());
+				"ZA", OffsetDateTime.now(ZoneOffset.UTC));
 
 		assertThat(invalidFields(request)).containsExactlyInAnyOrder("transactionId", "accountId");
 	}

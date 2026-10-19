@@ -14,6 +14,7 @@ public class FraudMetrics {
 	private final MeterRegistry registry;
 	private final Counter assessed;
 	private final Counter duplicate;
+	private final Counter conflict;
 	private final Counter accountBusy;
 	private final Counter flagged;
 	private final Counter notFlagged;
@@ -24,6 +25,7 @@ public class FraudMetrics {
 		this.registry = registry;
 		assessed = submissions(registry, "assessed");
 		duplicate = submissions(registry, "duplicate");
+		conflict = submissions(registry, "conflict");
 		accountBusy = submissions(registry, "account_busy");
 		flagged = assessments(registry, true);
 		notFlagged = assessments(registry, false);
@@ -63,6 +65,10 @@ public class FraudMetrics {
 		assessment.getRuleHits().forEach(hit -> Counter.builder("fraud.rule.hits")
 				.description("Rules triggered by new assessments").tag("rule", hit.ruleCode())
 				.register(registry).increment());
+	}
+
+	void recordConflict() {
+		conflict.increment();
 	}
 
 	void recordAccountBusy() {

@@ -1,6 +1,4 @@
 #!/usr/bin/env sh
-# Creates .env from .env.example, filling every empty value with a random secret.
-# Leaves an existing .env untouched, so it's safe to run more than once.
 set -eu
 
 cd "$(dirname "$0")/.."

@@ -1,0 +1,43 @@
+# Fraud rules. This file is the source of truth: change it by pull request (see .github/CODEOWNERS), and the change
+# takes effect on the next deploy. The service refuses to start if this file is invalid.
+#
+# Each rule takes exactly the parameters its type lists; anything else is an error.
+#   AMOUNT_THRESHOLD  threshold (base currency)
+#   CATEGORY_AMOUNT   categories, min-amount (base currency)
+#   COUNTRY_LIST      countries (ISO 3166 alpha-2)
+#   VELOCITY          max-transactions, window (ISO-8601 duration, e.g. PT10M), counted by arrival time
+#   ODD_HOURS         start-hour, end-hour (0-23, end 1-24), min-amount, zone (IANA time zone)
+#
+# shadow: true scores the rule and records its hits, but the hits don't count toward the flag. Use it to test a new
+# rule on live traffic before enforcing it: set shadow to false in a later pull request to enforce it.
+fraud:
+  rules:
+    - code: HIGH_AMOUNT
+      type: AMOUNT_THRESHOLD
+      score: 40
+      threshold: 10000.00
+
+    - code: RISKY_CATEGORY
+      type: CATEGORY_AMOUNT
+      score: 30
+      categories: [GAMBLING, CRYPTO]
+      min-amount: 1000.00
+
+    - code: VELOCITY
+      type: VELOCITY
+      score: 35
+      max-transactions: 5
+      window: PT10M
+
+    - code: HIGH_RISK_COUNTRY
+      type: COUNTRY_LIST
+      score: 30
+      countries: [KP, IR, SY]
+
+    - code: ODD_HOURS
+      type: ODD_HOURS
+      score: 20
+      start-hour: 0
+      end-hour: 5
+      min-amount: 2000.00
+      zone: Africa/Johannesburg

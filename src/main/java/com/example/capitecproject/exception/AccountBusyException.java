@@ -1,4 +1,4 @@
-package com.example.capitecproject.service;
+package com.example.capitecproject.exception;
 
 public class AccountBusyException extends RuntimeException {
 

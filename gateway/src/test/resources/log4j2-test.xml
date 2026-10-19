@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Unit tests: plain console output (following System.out so OutputCaptureExtension sees it), key-values included. -->
 <Configuration status="WARN">
   <Appenders>
     <Console name="Console" target="SYSTEM_OUT" follow="true">
