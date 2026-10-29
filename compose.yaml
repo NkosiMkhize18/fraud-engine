@@ -163,7 +163,7 @@ services:
   prometheus:
     <<: *hardening
     profiles: [app]
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     user: "65534:65534"
     read_only: true
     command:
