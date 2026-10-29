@@ -18,7 +18,7 @@
 		<tomcat.version>11.0.26</tomcat.version>
 		<jackson-2-bom.version>2.21.7</jackson-2-bom.version>
 		<jackson-bom.version>3.2.3</jackson-bom.version>
-		<springdoc.version>3.1.1</springdoc.version>
+		<springdoc.version>3.2.0</springdoc.version>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
