@@ -194,7 +194,7 @@ services:
   alertmanager:
     <<: *hardening
     profiles: [app]
-    image: prom/alertmanager:v0.34.1
+    image: prom/alertmanager:v0.34.2
     user: "65534:65534"
     read_only: true
     command:
